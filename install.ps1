@@ -156,6 +156,7 @@ foreach ($a in $actions) {
     }
     $method = $a.Type
     $status = 'unknown'
+    $statusMessage = $null
     try {
         switch ($a.Type) {
             'link'  { Ensure-Link $a.Src $a.Dest }
@@ -168,14 +169,15 @@ foreach ($a in $actions) {
         }
         $status = 'Success'
     } catch {
-        $status = "Failed: $($_.Exception.Message)"
-        Write-Warning $status
+        $status = "Failed"
+        $statusMessage = $_.Exception.Message
     }
     $results += [pscustomobject]@{
         Installed = $a.Src
         Method    = $method
         Target    = $a.Dest
         Status    = $status
+        StatusMessage = $statusMessage
     }
 }
 
@@ -183,5 +185,5 @@ Write-Host "Bootstrap complete."
 
 if ($results.Count -gt 0) {
     Write-Host "`nSummary:`n"
-    $results | Format-Table -AutoSize
+    $results | Sort-Object -Property Status
 }
