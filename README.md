@@ -48,6 +48,11 @@ Running it will ensure the necessary directories exist and create the symbolic l
 .\\install.ps1
 ```
 
-Feel free to extend the `$actions` array inside `install.ps1` with more entries (`link`, `copy`, `append`, etc.) to manage additional configuration files in a declarative fashion.
+Feel free to extend the `$actions` array inside `install.ps1` with more entries (`link`, `copy`, `append`, etc.) to manage additional configuration files in a declarative fashion.  The behaviour of the helpers has been designed to be safe:
+
+* `Ensure-Link` will **not** overwrite an existing file.  If the destination is already a symlink pointing to the correct source nothing happens; if it points elsewhere or is not a link you’ll receive a warning and must resolve the conflict manually.
+* `Append-Source` will only add a `<keyword> <path>` line if that exact statement is not already present, preserving idempotency when the installer is rerun.  The keyword defaults to `source` but may be overridden (e.g. `.` for POSIX shells) by supplying a `Keyword` field in the corresponding action entry.
+
+After the run, the script emits a **summary table** listing what was processed, which method was used, the target path, and whether each step succeeded or failed.  This makes it easy to inspect results in PowerShell's naturally object‑oriented output.
 
 

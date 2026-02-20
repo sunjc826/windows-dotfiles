@@ -27,13 +27,15 @@ The full filesystem path of the directory to verify or create.
 function Ensure-Link {
 <#
 .SYNOPSIS
-Create or replace a symbolic link under the user's home directory.
+Ensure a symbolic link exists at the destination pointing at the source.
 
 .DESCRIPTION
-Given a source file inside the repository and a destination path relative to
-`$HOME`, this helper ensures the parent directory of the destination exists,
-removes any existing item at that location, and then creates a symbolic link
-pointing from the destination to the source.
+This helper behaves idempotently: if the destination already exists as a
+symbolic link pointing to the correct source file, nothing is done.  If the
+destination exists but is *not* a symlink or points somewhere else, a warning
+is emitted and the file is left untouched; it is the user's responsibility to
+remove or correct it manually.  Only when the destination is absent is a new
+link created.
 
 .PARAMETER srcRel
 Path to the source file, relative to the repository root.
@@ -48,11 +50,25 @@ Path (relative to `$HOME`) where the link should be created.
     $src = Join-Path $repo $srcRel
     $dest = Join-Path $home $destRel
     Ensure-Directory (Split-Path $dest -Parent)
+
     if (Test-Path $dest) {
-        Write-Host "Removing existing $dest"
-        Remove-Item $dest -Force
+        $item = Get-Item -Path $dest -Force
+        if ($item.LinkType -eq 'SymbolicLink') {
+            $target = $item.Target
+            if ($target -eq $src) {
+                Write-Host "Existing symlink already correct: $dest -> $src"
+                return
+            } else {
+                Write-Warning "`$dest` is a symlink but points to `$target` instead of `$src`. Please fix manually."
+                return
+            }
+        } else {
+            Write-Warning "`$dest` exists and is not a symbolic link. Please rename or remove it before running the installer."
+            return
+        }
     }
-    Write-Host "Linking $dest -> $src"
+
+    Write-Host "Creating symbolic link $dest -> $src"
     New-Item -ItemType SymbolicLink -Path $dest -Target $src | Out-Null
 }
 
@@ -86,28 +102,44 @@ Destination path relative to `$HOME`.
 function Append-Source {
 <#
 .SYNOPSIS
-Append the contents of a repository file to a user file.
+Append a statement to a destination file, if not already present.
 
 .DESCRIPTION
-Useful when building composite configuration files by concatenating several
-fragments.  Ensures the destination directory exists, then reads the source
-file and appends its text to the end of the destination file.
+This helper does *not* copy the contents of the source file.  Instead it adds a
+line of the form `<keyword> <absolute‑path‑to‑source>` to the destination file
+(e.g. `source /path/to/file` or `.` on POSIX).  The keyword can be overridden
+to accommodate different shell languages or tools.  Before appending it uses
+`Select-String` to determine whether such a line already exists, providing
+idempotency: running the installer multiple times won't repeatedly add the
+same entry.
 
 .PARAMETER srcRel
 Path to the source file relative to the repository root.
 
 .PARAMETER destRel
 Path to the destination file relative to `$HOME`.
+
+.PARAMETER keyword
+The directive to prefix the source path with; defaults to `source`.
 #>
     param(
         [string]$srcRel,
-        [string]$destRel
+        [string]$destRel,
+        [string]$keyword = 'source'
     )
     $src = Join-Path $repo $srcRel
     $dest = Join-Path $home $destRel
     Ensure-Directory (Split-Path $dest -Parent)
-    Write-Host "Appending content of $src to $dest"
-    Get-Content $src | Add-Content $dest
+
+    $line = "$keyword $src"
+    if (Test-Path $dest) {
+        if (Select-String -Path $dest -Pattern [regex]::Escape($line) -Quiet) {
+            Write-Host "Destination already contains '$line', skipping."
+            return
+        }
+    }
+    Write-Host "Appending line '$line' to $dest"
+    Add-Content -Path $dest -Value $line
 }
 
 # declare what should happen; this mirrors the Linux style of having a list
@@ -117,16 +149,41 @@ $actions = @(
     # future items could be copied, appended, etc.
 )
 
+# track what we did for reporting
+$results = @()
+
 foreach ($a in $actions) {
     if ($a.Optional -and -not (Test-Path (Join-Path $repo $a.Src))) {
         continue
     }
-    switch ($a.Type) {
-        'link' { Ensure-Link $a.Src $a.Dest }
-        'copy' { Ensure-Copy $a.Src $a.Dest }
-        'append' { Append-Source $a.Src $a.Dest }
-        default { Write-Warning "Unknown action type: $($a.Type)" }
+    $method = $a.Type
+    $status = 'unknown'
+    try {
+        switch ($a.Type) {
+            'link'  { Ensure-Link $a.Src $a.Dest }
+            'copy'  { Ensure-Copy $a.Src $a.Dest }
+            'append' {
+                $kw = if ($a.ContainsKey('Keyword')) { $a.Keyword } else { 'source' }
+                Append-Source $a.Src $a.Dest -keyword $kw
+            }
+            default { throw "Unknown action type: $($a.Type)" }
+        }
+        $status = 'Success'
+    } catch {
+        $status = "Failed: $($_.Exception.Message)"
+        Write-Warning $status
+    }
+    $results += [pscustomobject]@{
+        Installed = $a.Src
+        Method    = $method
+        Target    = $a.Dest
+        Status    = $status
     }
 }
 
 Write-Host "Bootstrap complete."
+
+if ($results.Count -gt 0) {
+    Write-Host "`nSummary:`n"
+    $results | Format-Table -AutoSize
+}
