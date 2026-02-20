@@ -1,6 +1,9 @@
 # PowerShell bootstrap script for windows-dotfiles
 # declarative installer similar to the Linux `install.sh`/Makefile
 
+# Make all cmdlet errors terminating so they are caught by try/catch blocks
+$ErrorActionPreference = 'Stop'
+
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Definition
 # $home is a builtin variable to Powershell, its value is C:\Users\sunjc
 
@@ -49,6 +52,7 @@ Path (relative to `$HOME`) where the link should be created.
     )
     $src = Join-Path $repo $srcRel
     $dest = Join-Path $home $destRel
+    $srcItem = Get-Item $src
     Ensure-Directory (Split-Path $dest -Parent)
 
     if (Test-Path $dest) {
@@ -67,7 +71,16 @@ Path (relative to `$HOME`) where the link should be created.
     }
 
     Write-Host "Creating symbolic link $dest -> $src"
-    New-Item -ItemType SymbolicLink -Path $dest -Target $src | Out-Null
+    # Admin privileges are needed for this, the alternative is to New-Item -ItemType SymbolicLink -Path ($dest).Parent -Target ($src).Parent | Out-Null
+    try {
+        New-Item -ItemType SymbolicLink -Path $dest -Target $src | Out-Null
+    } catch {
+        if ($srcItem.PSIsContainer) {
+            New-Item -ItemType Junction -Path $dest -Target $src | Out-Null
+        } else {
+            throw "Admin privileges needed to symlink a file"
+        }
+    }
 }
 
 function Ensure-Copy {
