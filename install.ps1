@@ -2,7 +2,7 @@
 # declarative installer similar to the Linux `install.sh`/Makefile
 
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$home = $HOME
+# $home is a builtin variable to Powershell, its value is C:\Users\sunjc
 
 function Ensure-Directory {
 <#
