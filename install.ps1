@@ -32,9 +32,9 @@ Ensure a symbolic link exists at the destination pointing at the source.
 .DESCRIPTION
 This helper behaves idempotently: if the destination already exists as a
 symbolic link pointing to the correct source file, nothing is done.  If the
-destination exists but is *not* a symlink or points somewhere else, a warning
-is emitted and the file is left untouched; it is the user's responsibility to
-remove or correct it manually.  Only when the destination is absent is a new
+destination exists but is *not* a symlink or points somewhere else, an error
+is thrown so it appears as a failure in the summary; it is the user's
+responsibility to remove or correct it manually.  Only when the destination is absent is a new
 link created.
 
 .PARAMETER srcRel
@@ -59,12 +59,10 @@ Path (relative to `$HOME`) where the link should be created.
                 Write-Host "Existing symlink already correct: $dest -> $src"
                 return
             } else {
-                Write-Warning "`$dest` is a symlink but points to `$target` instead of `$src`. Please fix manually."
-                return
+                throw "$dest is a symlink but points to $target instead of $src. Please fix manually."
             }
         } else {
-            Write-Warning "`$dest` exists and is not a symbolic link. Please rename or remove it before running the installer."
-            return
+            throw "$dest exists and is not a symbolic link. Please rename or remove it before running the installer."
         }
     }
 
