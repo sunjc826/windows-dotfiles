@@ -73,16 +73,28 @@ Whether destRel is an absolute path.
 
     if (Test-Path $dest) {
         $item = Get-Item -Path $dest -Force
-        if ($item.LinkType -eq 'SymbolicLink') {
-            $target = $item.Target
-            if ($target -eq $src) {
-                Write-Host "Existing symlink already correct: $dest -> $src"
-                return
-            } else {
-                throw "$dest is a symlink but points to $target instead of $src. Please fix manually."
+        switch ($item.LinkType) {
+            'SymbolicLink' {
+                $target = $item.Target
+                if ($target -eq $src) {
+                    Write-Host "Existing symlink already correct: $dest -> $src"
+                    return
+                } else {
+                    throw "$dest is a symlink but points to $target instead of $src. Please fix manually."
+                }
             }
-        } else {
-            throw "$dest exists and is not a symbolic link. Please rename or remove it before running the installer."
+            'Junction' {
+                $target = $item.Target
+                if ($target -eq $src) {
+                    Write-Host "Existing junction already correct: $dest -> $src"
+                    return
+                } else {
+                    throw "$dest is a junction but points to $target instead of $src. Please fix manually."
+                }
+            }
+            default {
+                throw "$dest exists and is neither a symbolic link nor junction (LinkType=${item.LinkType}). Please rename or remove it before running the installer."
+            }
         }
     }
 
