@@ -1,5 +1,13 @@
 # User Instructions
 
+## Dotfiles Repository
+
+This is a **dotfiles repo**. Files here are symlinked/copied onto the system
+via `install.ps1`. When asked to create or modify system configuration files
+(e.g. PowerShell profiles, Claude Code settings, skills, shell configs), always
+create them **in this repo** — not directly on the system. The installer will
+take care of placing them in the correct system locations.
+
 ## Shell Environment
 
 This is a Windows machine with two bash environments available:

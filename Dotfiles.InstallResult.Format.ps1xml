@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <ViewDefinitions>
+    <View>
+      <Name>Dotfiles.InstallResult.Table</Name>
+      <ViewSelectedBy>
+        <TypeName>Dotfiles.InstallResult</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader>
+            <Label>Status</Label>
+            <Width>10</Width>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Label>Method</Label>
+            <Width>8</Width>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Label>Installed</Label>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Label>Target</Label>
+          </TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <Wrap />
+            <TableColumnItems>
+              <TableColumnItem>
+                <ScriptBlock>
+                  $esc = [char]27
+                  $reset = "${esc}[0m"
+                  $color = switch ($_.Status) {
+                    'Success' { "${esc}[32m" }
+                    'Failed'  { "${esc}[31m" }
+                    default   { "${esc}[33m" }
+                  }
+                  "${color}$($_.Status)${reset}"
+                </ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>Method</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>Installed</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <ScriptBlock>
+                  if ($_.StatusMessage) {
+                    "$($_.Target) ($($_.StatusMessage))"
+                  } else {
+                    $_.Target
+                  }
+                </ScriptBlock>
+              </TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>

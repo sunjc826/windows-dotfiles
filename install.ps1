@@ -7,7 +7,18 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Definition
 # $home is a builtin variable to Powershell, its value is C:\Users\sunjc
 
-function Ensure-Directory {
+Update-FormatData -PrependPath (Join-Path $repo 'Dotfiles.InstallResult.Format.ps1xml')
+
+function Resolve-DotfilesDest {
+    param(
+        [string]$destRel,
+        [bool]$isAbsolute = $false
+    )
+    if ($isAbsolute) { return $destRel }
+    return Join-Path $home $destRel
+}
+
+function New-DotfilesDirectoryItem {
 <#
 .SYNOPSIS
 Ensures that a directory exists, creating it if necessary.
@@ -27,7 +38,7 @@ The full filesystem path of the directory to verify or create.
     }
 }
 
-function Ensure-Link {
+function Link-DotfilesItem {
 <#
 .SYNOPSIS
 Ensure a symbolic link exists at the destination pointing at the source.
@@ -44,16 +55,21 @@ link created.
 Path to the source file, relative to the repository root.
 
 .PARAMETER destRel
-Path (relative to `$HOME`) where the link should be created.
+Path (relative to `$HOME`) where the link should be created, or an absolute
+path when `$isAbsolute` is true.
+
+.PARAMETER isAbsolute
+Whether destRel is an absolute path.
 #>
     param(
         [string]$srcRel,
-        [string]$destRel
+        [string]$destRel,
+        [bool]$isAbsolute = $false
     )
     $src = Join-Path $repo $srcRel
-    $dest = Join-Path $home $destRel
+    $dest = Resolve-DotfilesDest $destRel $isAbsolute
     $srcItem = Get-Item $src
-    Ensure-Directory (Split-Path $dest -Parent)
+    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
 
     if (Test-Path $dest) {
         $item = Get-Item -Path $dest -Force
@@ -83,7 +99,7 @@ Path (relative to `$HOME`) where the link should be created.
     }
 }
 
-function Ensure-Copy {
+function Copy-DotfilesItem {
 <#
 .SYNOPSIS
 Copy a file from the repository into the user's home directory.
@@ -97,20 +113,26 @@ at the destination is overwritten.
 Source path relative to the repository root.
 
 .PARAMETER destRel
-Destination path relative to `$HOME`.
+Destination path relative to `$HOME`, or an absolute path when `$isAbsolute`
+is true.
+
+.PARAMETER isAbsolute
+Whether destRel is an absolute path.
 #>
     param(
         [string]$srcRel,
-        [string]$destRel
+        [string]$destRel,
+        [bool]$isAbsolute = $false
     )
     $src = Join-Path $repo $srcRel
-    $dest = Join-Path $home $destRel
-    Ensure-Directory (Split-Path $dest -Parent)
+    $dest = Resolve-DotfilesDest $destRel $isAbsolute
+    
+    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
     Write-Host "Copying $src to $dest"
     Copy-Item -Path $src -Destination $dest -Force
 }
 
-function Append-Source {
+function Add-DotfilesSourceItem {
 <#
 .SYNOPSIS
 Append a statement to a destination file, if not already present.
@@ -128,7 +150,11 @@ same entry.
 Path to the source file relative to the repository root.
 
 .PARAMETER destRel
-Path to the destination file relative to `$HOME`.
+Path to the destination file relative to `$HOME`, or an absolute path when
+`$isAbsolute` is true.
+
+.PARAMETER isAbsolute
+Whether destRel is an absolute path.
 
 .PARAMETER keyword
 The directive to prefix the source path with; defaults to `source`.
@@ -136,11 +162,12 @@ The directive to prefix the source path with; defaults to `source`.
     param(
         [string]$srcRel,
         [string]$destRel,
+        [bool]$isAbsolute = $false,
         [string]$keyword = 'source'
     )
     $src = Join-Path $repo $srcRel
-    $dest = Join-Path $home $destRel
-    Ensure-Directory (Split-Path $dest -Parent)
+    $dest = Resolve-DotfilesDest $destRel $isAbsolute
+    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
 
     $line = "$keyword $src"
     if (Test-Path $dest) {
@@ -157,7 +184,9 @@ The directive to prefix the source path with; defaults to `source`.
 $actions = @(
     @{ Type = 'link'; Src = '.claude\settings.json'; Dest = '.claude\settings.json' }
     @{ Type = 'link'; Src = '.claude\CLAUDE.md'; Dest = '.claude\CLAUDE.md'; Optional = $true }
-    # future items could be copied, appended, etc.
+    @{ Type = 'link'; Src = '.claude\skills\powershell'; Dest = '.claude\skills\powershell' }
+    @{ Type = 'link'; Src = '.claude\skills\new-skill'; Dest = '.claude\skills\new-skill' }
+    @{ Type = 'link'; Src = 'Microsoft.PowerShell_profile.ps1'; Dest = $profile; IsAbsolute = $true }
 )
 
 # track what we did for reporting
@@ -171,12 +200,13 @@ foreach ($a in $actions) {
     $status = 'unknown'
     $statusMessage = $null
     try {
+        $abs = $a.ContainsKey('IsAbsolute') -and $a.IsAbsolute
         switch ($a.Type) {
-            'link'  { Ensure-Link $a.Src $a.Dest }
-            'copy'  { Ensure-Copy $a.Src $a.Dest }
+            'link'  { Link-DotfilesItem $a.Src $a.Dest $abs }
+            'copy'  { Copy-DotfilesItem $a.Src $a.Dest $abs }
             'append' {
                 $kw = if ($a.ContainsKey('Keyword')) { $a.Keyword } else { 'source' }
-                Append-Source $a.Src $a.Dest -keyword $kw
+                Add-DotfilesSourceItem $a.Src $a.Dest -isAbsolute $abs -keyword $kw
             }
             default { throw "Unknown action type: $($a.Type)" }
         }
@@ -185,13 +215,15 @@ foreach ($a in $actions) {
         $status = "Failed"
         $statusMessage = $_.Exception.Message
     }
-    $results += [pscustomobject]@{
-        Installed = $a.Src
-        Method    = $method
-        Target    = $a.Dest
-        Status    = $status
+    $result = [pscustomobject]@{
+        PSTypeName    = 'Dotfiles.InstallResult'
+        Installed     = $a.Src
+        Method        = $method
+        Target        = $a.Dest
+        Status        = $status
         StatusMessage = $statusMessage
     }
+    $results += $result
 }
 
 Write-Host "Bootstrap complete."
