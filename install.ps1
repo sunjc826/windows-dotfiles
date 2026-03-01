@@ -1,6 +1,12 @@
 # PowerShell bootstrap script for windows-dotfiles
 # declarative installer similar to the Linux `install.sh`/Makefile
+[CmdletBinding()]
+param()
 
+# Don't prompt the user for confirmation
+if ($DebugPreference -eq 'Inquire') {
+    $DebugPreference = 'Continue'
+}
 # Make all cmdlet errors terminating so they are caught by try/catch blocks
 $ErrorActionPreference = 'Stop'
 
@@ -305,7 +311,7 @@ $actions = @(
     @{ Type = 'link'; Src = '.claude\skills\new-skill'; Dest = '.claude\skills\new-skill' }
     @{ Type = 'link'; Src = 'Microsoft.PowerShell_profile.ps1'; Dest = $profile; IsAbsolute = $true }
     @{ Type = 'mkdir'; Path = "${dataDrive}:\LLM"; isAbsolute = $true }
-    @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\LLM"; IsAbsolute = $true }
+    @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\LLM"; IsAbsolute = $true; IsOverride = $true }
 )
 
 # track what we did for reporting
@@ -335,7 +341,7 @@ foreach ($a in $actions) {
             'mkdir' { New-DotfilesDirectoryItem $a.Path $abs }
             'userEnv' { 
                 $isRegistry = $a.ContainsKey('IsRegistry') -and $a.IsRegistry
-                Set-DotfilesUserEnvironmentItem $a.Name $a.Value $override $isRegistry
+                Set-DotfilesUserEnvironmentItem -name $a.Name -value $a.Value -isOverride $override -isRegistry $isRegistry
             }
             default { throw "Unknown action type: $($a.Type)" }
         }
