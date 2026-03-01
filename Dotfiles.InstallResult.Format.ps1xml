@@ -10,7 +10,7 @@
         <TableHeaders>
           <TableColumnHeader>
             <Label>Status</Label>
-            <Width>10</Width>
+            <Width>18</Width>
           </TableColumnHeader>
           <TableColumnHeader>
             <Label>Method</Label>
@@ -32,9 +32,10 @@
                   $esc = [char]27
                   $reset = "${esc}[0m"
                   $color = switch ($_.Status) {
-                    'Success' { "${esc}[32m" }
-                    'Failed'  { "${esc}[31m" }
-                    default   { "${esc}[33m" }
+                    'Installed'        { "${esc}[32m" }
+                    'AlreadyInstalled' { "${esc}[33m" }
+                    'Failed'           { "${esc}[31m" }
+                    default            { "${esc}[0m" }
                   }
                   "${color}$($_.Status)${reset}"
                 </ScriptBlock>

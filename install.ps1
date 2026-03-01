@@ -15,6 +15,12 @@ $repo = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 Update-FormatData -PrependPath (Join-Path $repo 'Dotfiles.InstallResult.Format.ps1xml')
 
+enum DotfilesStatus {
+    Installed
+    AlreadyInstalled
+    Failed
+}
+
 function Resolve-DotfilesDest {
     param(
         [string]$destRel,
@@ -38,10 +44,13 @@ directory already exists. Also creates the parents if missing like mkdir -p.
 The full filesystem path of the directory to verify or create.
 #>
     param([string]$path)
-    if (-not (Test-Path $path)) {
-        Write-Debug "Creating directory $path"
-        New-Item -ItemType Directory -Path $path -Force | Out-Null
+    if (Test-Path $path) {
+        Write-Debug "Directory already exists: $path"
+        return [DotfilesStatus]::AlreadyInstalled
     }
+    Write-Debug "Creating directory $path"
+    New-Item -ItemType Directory -Path $path -Force | Out-Null
+    return [DotfilesStatus]::Installed
 }
 
 function New-DotfilesLinkItem {
@@ -75,7 +84,7 @@ Whether destRel is an absolute path.
     $src = Join-Path $repo $srcRel
     $dest = Resolve-DotfilesDest $destRel $isAbsolute
     $srcItem = Get-Item $src
-    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
+    $null = New-DotfilesDirectoryItem (Split-Path $dest -Parent)
 
     if (Test-Path $dest) {
         $item = Get-Item -Path $dest -Force
@@ -84,7 +93,7 @@ Whether destRel is an absolute path.
                 $target = $item.Target
                 if ($target -eq $src) {
                     Write-Debug "Existing symlink already correct: $dest -> $src"
-                    return
+                    return [DotfilesStatus]::AlreadyInstalled
                 } else {
                     throw "$dest is a symlink but points to $target instead of $src. Please fix manually."
                 }
@@ -93,7 +102,7 @@ Whether destRel is an absolute path.
                 $target = $item.Target
                 if ($target -eq $src) {
                     Write-Debug "Existing junction already correct: $dest -> $src"
-                    return
+                    return [DotfilesStatus]::AlreadyInstalled
                 } else {
                     throw "$dest is a junction but points to $target instead of $src. Please fix manually."
                 }
@@ -115,6 +124,7 @@ Whether destRel is an absolute path.
             throw "Admin privileges needed to symlink a file"
         }
     }
+    return [DotfilesStatus]::Installed
 }
 
 function Copy-DotfilesItem {
@@ -145,9 +155,10 @@ Whether destRel is an absolute path.
     $src = Join-Path $repo $srcRel
     $dest = Resolve-DotfilesDest $destRel $isAbsolute
     
-    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
+    $null = New-DotfilesDirectoryItem (Split-Path $dest -Parent)
     Write-Debug "Copying $src to $dest"
     Copy-Item -Path $src -Destination $dest -Force
+    return [DotfilesStatus]::Installed
 }
 
 function Add-DotfilesSourceItem {
@@ -185,17 +196,18 @@ The directive to prefix the source path with; defaults to `source`.
     )
     $src = Join-Path $repo $srcRel
     $dest = Resolve-DotfilesDest $destRel $isAbsolute
-    New-DotfilesDirectoryItem (Split-Path $dest -Parent)
+    $null = New-DotfilesDirectoryItem (Split-Path $dest -Parent)
 
     $line = "$keyword $src"
     if (Test-Path $dest) {
         if (Select-String -Path $dest -Pattern [regex]::Escape($line) -Quiet) {
             Write-Debug "Destination already contains '$line', skipping."
-            return
+            return [DotfilesStatus]::AlreadyInstalled
         }
     }
     Write-Debug "Appending line '$line' to $dest"
     Add-Content -Path $dest -Value $line
+    return [DotfilesStatus]::Installed
 }
 
 # $hkcuFound = $false
@@ -232,11 +244,12 @@ Whether Path is an absolute path.
 
     if ($currentUserPath -split ';' -contains $resolvedPath) {
         Write-Debug "$path already exists in user path"
-        return
+        return [DotfilesStatus]::AlreadyInstalled
     }
 
     $nextPathValue = $currentUserPath + ";$resolvedPath"
     Set-ItemProperty HKCU:\Environment -Name Path -Value $nextPathValue
+    return [DotfilesStatus]::Installed
 }
 
 function Set-DotfilesUserEnvironmentItem {
@@ -266,7 +279,7 @@ Whether to override an existing value.
     if ($null -ne $currentValue) {
         if ($currentValue -eq $value) {
             Write-Debug "$name already set to $value"
-            return
+            return [DotfilesStatus]::AlreadyInstalled
         }
 
         if (!$isOverride) {
@@ -276,6 +289,7 @@ Whether to override an existing value.
 
     Write-Debug "Setting env $name to $value"
     Set-ItemProperty HKCU:\Environment -Name $name -Value $value
+    return [DotfilesStatus]::Installed
 }
 
 $coreDrive = 'C'
@@ -308,7 +322,7 @@ foreach ($a in $actions) {
     try {
         $abs = $a.ContainsKey('IsAbsolute') -and $a.IsAbsolute
         $override = $a.ContainsKey('IsOverride') -and $a.IsOverride
-        switch ($a.Type) {
+        $result = switch ($a.Type) {
             'link'  { New-DotfilesLinkItem $a.Src $a.Dest $abs }
             'copy'  { Copy-DotfilesItem $a.Src $a.Dest $abs }
             'append' {
@@ -324,9 +338,9 @@ foreach ($a in $actions) {
             }
             default { throw "Unknown action type: $($a.Type)" }
         }
-        $status = 'Success'
+        $status = $result
     } catch {
-        $status = "Failed"
+        $status = [DotfilesStatus]::Failed
         $statusMessage = $_.Exception.Message
     }
     switch ($a.Type) {
