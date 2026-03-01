@@ -350,11 +350,17 @@ foreach ($a in $actions) {
         $status = "Failed"
         $statusMessage = $_.Exception.Message
     }
+    switch ($a.Type) {
+        'mkdir'    { $src = $null;    $dest = $a.Path }
+        'userPath' { $src = $a.Path;  $dest = 'PATH' }
+        'userEnv'  { $src = $a.Value; $dest = $a.Name }
+        default    { $src = $a.Src;   $dest = $a.Dest }
+    }
     $result = [pscustomobject]@{
         PSTypeName    = 'Dotfiles.InstallResult'
-        Installed     = $a.Src
+        Installed     = $src
         Method        = $method
-        Target        = $a.Dest
+        Target        = $dest
         Status        = $status
         StatusMessage = $statusMessage
     }
