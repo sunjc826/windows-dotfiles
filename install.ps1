@@ -281,9 +281,10 @@ Whether Path is an absolute path.
     if ($null -ne $currentValue) {
         if ($currentValue -eq $value) {
             Write-Debug "$name already set to $value"
+            return
         }
 
-        if (!$override) {
+        if (!$isOverride) {
             throw "$name currently set to $currentValue"
         }
     }
@@ -335,12 +336,12 @@ foreach ($a in $actions) {
                 Add-DotfilesSourceItem $a.Src $a.Dest -isAbsolute $abs -keyword $kw
             }
             'userPath' {
-                $isRegistry = $a.ContainsKey('IsRegistry') -and $a.IsRegistry
+                $isRegistry = !$a.ContainsKey('IsRegistry') -or $a.IsRegistry
                 Add-DotfilesUserPathItem $a.Path $abs $isRegistry
             }
             'mkdir' { New-DotfilesDirectoryItem $a.Path $abs }
-            'userEnv' { 
-                $isRegistry = $a.ContainsKey('IsRegistry') -and $a.IsRegistry
+            'userEnv' {
+                $isRegistry = !$a.ContainsKey('IsRegistry') -or $a.IsRegistry
                 Set-DotfilesUserEnvironmentItem -name $a.Name -value $a.Value -isOverride $override -isRegistry $isRegistry
             }
             default { throw "Unknown action type: $($a.Type)" }
