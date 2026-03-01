@@ -291,8 +291,8 @@ $actions = @(
     @{ Type = 'link'; Src = '.claude\skills\powershell'; Dest = '.claude\skills\powershell' }
     @{ Type = 'link'; Src = '.claude\skills\new-skill'; Dest = '.claude\skills\new-skill' }
     @{ Type = 'link'; Src = 'Microsoft.PowerShell_profile.ps1'; Dest = $profile; IsAbsolute = $true }
-    @{ Type = 'mkdir'; Path = "${dataDrive}:\LLM"; isAbsolute = $true }
-    @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\LLM"; IsAbsolute = $true; IsOverride = $true }
+    @{ Type = 'mkdir'; Path = "${dataDrive}:\llm"; isAbsolute = $true }
+    @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\llm"; IsAbsolute = $true; IsOverride = $true }
 )
 
 # track what we did for reporting
