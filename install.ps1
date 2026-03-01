@@ -225,57 +225,42 @@ Whether Path is an absolute path.
 #>
     param(
         [string]$path,
-        [bool]$isAbsolute = $false,
-        [bool]$isRegistry = $true
+        [bool]$isAbsolute = $false
     )
     $resolvedPath = Resolve-DotfilesDest $path $isAbsolute
-    if (!$isRegistry) {
-        $currentUserPath = ${env:PATH}
-    }
-    else {
-        $currentUserPath = Get-ItemProperty HKCU:\Environment -Name Path | Select-Object -ExpandProperty Path
-    }
+    $currentUserPath = Get-ItemProperty HKCU:\Environment -Name Path | Select-Object -ExpandProperty Path
 
     if ($currentUserPath -split ';' -contains $resolvedPath) {
         Write-Debug "$path already exists in user path"
+        return
     }
 
     $nextPathValue = $currentUserPath + ";$resolvedPath"
-    if (!$isRegistry) {
-        ${env:PATH} = $nextPathValue   
-    } else {
-        Set-ItemProperty HKCU:\Environment -Name Path -Value $nextPathValue
-    }
+    Set-ItemProperty HKCU:\Environment -Name Path -Value $nextPathValue
 }
 
 function Set-DotfilesUserEnvironmentItem {
 <#
 .SYNOPSIS
-Append an item to the user registry environment, if not already present.
-If not absolute, then it will relative to `$HOME`.
+Set a user environment variable in the registry, if not already present.
 
-.PARAMETER Path
-Path name.
+.PARAMETER Name
+Environment variable name.
 
-.PARAMETER IsAbsolute
-Whether Path is an absolute path.
+.PARAMETER Value
+Environment variable value.
+
+.PARAMETER IsOverride
+Whether to override an existing value.
 #>
     param(
         [string]$name,
         [string]$value,
-        [bool]$isOverride = $false,
-        [bool]$isRegistry = $true
+        [bool]$isOverride = $false
     )
     $currentValue = $null
-    if (!$isRegistry) {
-        if (Get-ChildItem Env:\ | Where-Object Name -eq $name) {
-            $currentValue = Get-Item Env:\$name
-        }
-    }
-    else {
-        if (Get-Item HKCU:\Environment | Where-Object Property -eq $name) {
-            $currentValue = Get-ItemProperty HKCU:\Environment -Name $name | Select-Object -ExpandProperty $name
-        }
+    if (Get-Item HKCU:\Environment | Where-Object Property -eq $name) {
+        $currentValue = Get-ItemProperty HKCU:\Environment -Name $name | Select-Object -ExpandProperty $name
     }
 
     if ($null -ne $currentValue) {
@@ -290,12 +275,7 @@ Whether Path is an absolute path.
     }
 
     Write-Debug "Setting env $name to $value"
-    if (!$isRegistry) {
-        Set-Item Env:\$name -Value $value 
-    }
-    else {
-        Set-ItemProperty HKCU:\Environment -Name $name -Value $value
-    }
+    Set-ItemProperty HKCU:\Environment -Name $name -Value $value
 }
 
 $coreDrive = 'C'
@@ -336,13 +316,11 @@ foreach ($a in $actions) {
                 Add-DotfilesSourceItem $a.Src $a.Dest -isAbsolute $abs -keyword $kw
             }
             'userPath' {
-                $isRegistry = !$a.ContainsKey('IsRegistry') -or $a.IsRegistry
-                Add-DotfilesUserPathItem $a.Path $abs $isRegistry
+                Add-DotfilesUserPathItem $a.Path $abs
             }
             'mkdir' { New-DotfilesDirectoryItem $a.Path $abs }
             'userEnv' {
-                $isRegistry = !$a.ContainsKey('IsRegistry') -or $a.IsRegistry
-                Set-DotfilesUserEnvironmentItem -name $a.Name -value $a.Value -isOverride $override -isRegistry $isRegistry
+                Set-DotfilesUserEnvironmentItem -name $a.Name -value $a.Value -isOverride $override
             }
             default { throw "Unknown action type: $($a.Type)" }
         }
@@ -353,8 +331,8 @@ foreach ($a in $actions) {
     }
     switch ($a.Type) {
         'mkdir'    { $src = $null;    $dest = $a.Path }
-        'userPath' { $src = $a.Path;  $dest = 'PATH' }
-        'userEnv'  { $src = $a.Value; $dest = $a.Name }
+        'userPath' { $src = $a.Path;  $dest = 'HKCU:\Environment[Path]' }
+        'userEnv'  { $src = $a.Value; $dest = "HKCU:\Environment[$($a.Name)]" }
         default    { $src = $a.Src;   $dest = $a.Dest }
     }
     $result = [pscustomobject]@{
