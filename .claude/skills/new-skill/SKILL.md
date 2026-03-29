@@ -28,6 +28,22 @@ main file.
       helper.sh
 ```
 
+### User-Level Skills (this machine)
+
+Personal skills are managed through the **windows-dotfiles** repo and symlinked
+into `~/.claude/skills/` by the installer. When creating a new user-level skill:
+
+1. Create the skill directory in the dotfiles repo:
+   `C:\Users\sunjc\Documents\Projects\windows-dotfiles\.claude\skills\<skill-name>\SKILL.md`
+2. Symlink it into the active location:
+   ```bash
+   ln -sfn /c/Users/sunjc/Documents/Projects/windows-dotfiles/.claude/skills/<skill-name> \
+           /c/Users/sunjc/.claude/skills/<skill-name>
+   ```
+
+**Never** create user-level skills directly in `~/.claude/skills/` — they won't
+be tracked by git or deployed to other machines.
+
 ## SKILL.md Format
 
 A YAML frontmatter block followed by Markdown instructions.
@@ -111,6 +127,13 @@ context: fork
 agent: Explore
 ---
 ```
+
+## Writing High-Quality Skills
+
+For comprehensive guidance on writing effective, discoverable, and well-tested
+skills — including TDD-based validation, search optimization, and
+bulletproofing — use `superpowers:writing-skills` (if the superpowers plugin is
+installed).
 
 ## Skills vs Commands
 
