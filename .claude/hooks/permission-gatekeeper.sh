@@ -109,14 +109,89 @@ check_allowlist() {
   return 1
 }
 
+# --- Bash Tier 2: Haiku LLM Safety Check ---
+check_with_haiku() {
+  local cmd="$1"
+
+  # Bail if no API key
+  if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "ask|no API key available"
+    return 0
+  fi
+
+  local system_prompt
+  system_prompt='You are a security filter for shell commands executed by an AI coding assistant.
+Evaluate the command for safety. Respond with ONLY a JSON object, no other text.
+
+Rules (balanced policy):
+- ALLOW: common development operations — file writes in project directories, package installs scoped to a project, compilation, formatting, linting, running project scripts, git operations that dont force-push or rewrite shared history.
+- DENY: clearly destructive commands (rm -rf /, chmod -R 777 /), data exfiltration (curl/wget piping to external servers with local data), credential access (reading .env, ~/.ssh, /etc/shadow), force-push to main/master, system-wide package installs (sudo apt/brew install), cryptomining, reverse shells.
+- ASK: anything ambiguous — commands you are unsure about, complex piped commands that mix safe and unsafe operations, operations on paths outside the project directory.
+
+Response format:
+{"decision": "allow|deny|ask", "reason": "brief explanation"}'
+
+  local request_body
+  request_body="$(jq -n -c \
+    --arg system "$system_prompt" \
+    --arg cmd "$cmd" \
+    '{
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 150,
+      system: $system,
+      messages: [{role: "user", content: $cmd}]
+    }')"
+
+  local response
+  response="$(curl -s --max-time 10 \
+    -H "x-api-key: $ANTHROPIC_API_KEY" \
+    -H "anthropic-version: 2023-06-01" \
+    -H "content-type: application/json" \
+    -d "$request_body" \
+    "https://api.anthropic.com/v1/messages" 2>/dev/null)" || {
+    echo "ask|API call failed"
+    return 0
+  }
+
+  # Extract text content from API response
+  local text_content
+  text_content="$(echo "$response" | jq -r '.content[0].text // empty' 2>/dev/null)" || {
+    echo "ask|failed to parse API response"
+    return 0
+  }
+
+  if [ -z "$text_content" ]; then
+    echo "ask|empty API response"
+    return 0
+  fi
+
+  # Parse Haiku's JSON decision
+  local haiku_decision haiku_reason
+  haiku_decision="$(echo "$text_content" | jq -r '.decision // empty' 2>/dev/null)" || true
+  haiku_reason="$(echo "$text_content" | jq -r '.reason // empty' 2>/dev/null)" || true
+
+  # Validate decision is one of allow/deny/ask
+  case "$haiku_decision" in
+    allow|deny|ask)
+      echo "${haiku_decision}|Haiku: ${haiku_reason}"
+      ;;
+    *)
+      echo "ask|Haiku returned invalid decision: $haiku_decision"
+      ;;
+  esac
+}
+
 # --- Route by tool name ---
 case "$TOOL_NAME" in
   Bash)
     if check_allowlist "$DETAIL"; then
       log_and_respond "allow" "allowlist"
     else
-      # Tier 2 (Haiku) handled in Task 4 — fall through to ask for now
-      log_and_respond "ask" "no allowlist match"
+      # Tier 2: Ask Haiku
+      haiku_result="$(check_with_haiku "$DETAIL")"
+      haiku_decision="${haiku_result%%|*}"
+      haiku_reason="${haiku_result#*|}"
+      log_and_respond "$haiku_decision" "$haiku_reason"
     fi
     ;;
   *)
