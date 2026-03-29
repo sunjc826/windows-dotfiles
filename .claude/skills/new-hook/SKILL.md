@@ -1,7 +1,6 @@
 ---
 name: new-hook
 description: Use when creating, modifying, or debugging Claude Code hooks. Covers hook events, matchers, input/output schemas, command/http/prompt/agent types, and cross-platform scripting.
-user-invocable: false
 ---
 
 # Claude Code Hooks

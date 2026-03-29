@@ -1,7 +1,6 @@
 ---
 name: powershell
 description: Conventions for writing idiomatic PowerShell 5.1 scripts
-user-invocable: false
 ---
 
 # PowerShell Conventions

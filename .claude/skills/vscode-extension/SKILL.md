@@ -1,7 +1,6 @@
 ---
 name: vscode-extension
 description: Use when creating, scaffolding, or modifying VSCode extensions. Covers project structure, cross-platform compatibility (Windows/macOS/Linux), WebView integration, bundling, testing, and publishing.
-user-invocable: false
 ---
 
 # VSCode Extension Development
