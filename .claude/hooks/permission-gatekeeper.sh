@@ -62,11 +62,62 @@ log_and_respond() {
   fi
 }
 
+# --- Bash Tier 1: Regex Allowlist ---
+check_allowlist() {
+  local cmd="$1"
+
+  # Strip leading whitespace and env var assignments (e.g. "FOO=bar cmd")
+  local base_cmd
+  base_cmd="$(echo "$cmd" | sed 's/^[[:space:]]*//' | sed 's/^[A-Za-z_][A-Za-z_0-9]*=[^ ]* *//')"
+
+  local -a ALLOWED_PATTERNS=(
+    # Read-only / inspection
+    '^git (status|log|diff|show|branch|remote|tag|rev-parse|rev-list|describe|ls-files|ls-tree|cat-file|shortlog|reflog|blame|whatchanged)( |$)'
+    '^(ls|cat|head|tail|pwd|echo|which|type|env|printenv|true|false)( |$)'
+    '^(wc|file|stat|find|grep|rg|jq|diff|sort|uniq|tr|cut|awk|sed)( |$)'
+    '^(dirname|basename|realpath|readlink)( |$)'
+
+    # Safe git write operations
+    '^git (add|commit|branch|checkout|switch|stash|merge|rebase|cherry-pick|tag|restore|reset)( |$)'
+
+    # Build/dev tooling (scoped)
+    '^npm (run|test|install|ci|ls|outdated|audit|exec|pkg|version|view|info|explain)( |$)'
+    '^npx (prettier|eslint)( |$)'
+    '^python [^ ]*\.py( |$)'
+    '^python -m (pytest|unittest)( |$)'
+    '^node [^ ]*\.js( |$)'
+    '^tsc( |$)'
+
+    # Testing
+    '^(pytest|jest|vitest|cargo test)( |$)'
+
+    # Directory creation
+    '^mkdir( |$)'
+
+    # Common safe utilities
+    '^(touch|cp|mv|chmod|date|uname|whoami|hostname|id)( |$)'
+    '^(tar|zip|unzip|gzip|gunzip)( |$)'
+    '^rm -f /tmp/cc_'
+  )
+
+  for pattern in "${ALLOWED_PATTERNS[@]}"; do
+    if echo "$base_cmd" | grep -qE "$pattern"; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # --- Route by tool name ---
 case "$TOOL_NAME" in
   Bash)
-    # Bash gating handled in Task 3 and Task 4 — placeholder for now
-    log_and_respond "ask" "not yet implemented"
+    if check_allowlist "$DETAIL"; then
+      log_and_respond "allow" "allowlist"
+    else
+      # Tier 2 (Haiku) handled in Task 4 — fall through to ask for now
+      log_and_respond "ask" "no allowlist match"
+    fi
     ;;
   *)
     log_and_respond "allow" "non-bash auto-allow"
