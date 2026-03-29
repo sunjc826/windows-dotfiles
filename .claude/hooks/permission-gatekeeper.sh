@@ -113,62 +113,40 @@ check_allowlist() {
 check_with_haiku() {
   local cmd="$1"
 
-  # Bail if no API key
-  if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "ask|no API key available"
+  # Bail if claude CLI not available
+  if ! command -v claude &>/dev/null; then
+    echo "ask|claude CLI not found"
     return 0
   fi
 
   local system_prompt
-  system_prompt='You are a security filter for shell commands executed by an AI coding assistant.
-Evaluate the command for safety. Respond with ONLY a JSON object, no other text.
+  system_prompt='You are a security filter for shell commands executed by an AI coding assistant. Evaluate the command for safety.
 
-Rules (balanced policy):
-- ALLOW: common development operations — file writes in project directories, package installs scoped to a project, compilation, formatting, linting, running project scripts, git operations that dont force-push or rewrite shared history.
-- DENY: clearly destructive commands (rm -rf /, chmod -R 777 /), data exfiltration (curl/wget piping to external servers with local data), credential access (reading .env, ~/.ssh, /etc/shadow), force-push to main/master, system-wide package installs (sudo apt/brew install), cryptomining, reverse shells.
-- ASK: anything ambiguous — commands you are unsure about, complex piped commands that mix safe and unsafe operations, operations on paths outside the project directory.
+Rules:
+- ALLOW: common dev operations — file writes in project dirs, scoped package installs, compilation, formatting, linting, running project scripts, git operations that dont force-push or rewrite shared history.
+- DENY: destructive commands (rm -rf /, chmod -R 777 /), data exfiltration (curl/wget piping local data to external servers), credential access (.env, ~/.ssh, /etc/shadow), force-push to main/master, system-wide installs (sudo apt/brew install), cryptomining, reverse shells.
+- ASK: anything ambiguous, complex piped commands mixing safe and unsafe operations, operations outside the project directory.'
 
-Response format:
-{"decision": "allow|deny|ask", "reason": "brief explanation"}'
+  local json_schema='{"type":"object","properties":{"decision":{"type":"string","enum":["allow","deny","ask"]},"reason":{"type":"string"}},"required":["decision","reason"]}'
 
-  local request_body
-  request_body="$(jq -n -c \
-    --arg system "$system_prompt" \
-    --arg cmd "$cmd" \
-    '{
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      system: $system,
-      messages: [{role: "user", content: $cmd}]
-    }')"
-
+  # Use claude CLI with -p (print mode) — uses existing subscription auth,
+  # and -p mode does NOT trigger PermissionRequest hooks (no infinite recursion).
+  # --json-schema enforces structured output in .structured_output field.
   local response
-  response="$(curl -s --max-time 10 \
-    -H "x-api-key: $ANTHROPIC_API_KEY" \
-    -H "anthropic-version: 2023-06-01" \
-    -H "content-type: application/json" \
-    -d "$request_body" \
-    "https://api.anthropic.com/v1/messages" 2>/dev/null)" || {
-    echo "ask|API call failed"
+  response="$(echo "$cmd" | claude -p \
+    --model haiku \
+    --system-prompt "$system_prompt" \
+    --output-format json \
+    --json-schema "$json_schema" \
+    --no-session-persistence 2>/dev/null)" || {
+    echo "ask|claude CLI call failed"
     return 0
   }
 
-  # Extract text content from API response
-  local text_content
-  text_content="$(echo "$response" | jq -r '.content[0].text // empty' 2>/dev/null)" || {
-    echo "ask|failed to parse API response"
-    return 0
-  }
-
-  if [ -z "$text_content" ]; then
-    echo "ask|empty API response"
-    return 0
-  fi
-
-  # Parse Haiku's JSON decision
+  # Extract structured output from claude JSON response
   local haiku_decision haiku_reason
-  haiku_decision="$(echo "$text_content" | jq -r '.decision // empty' 2>/dev/null)" || true
-  haiku_reason="$(echo "$text_content" | jq -r '.reason // empty' 2>/dev/null)" || true
+  haiku_decision="$(echo "$response" | jq -r '.structured_output.decision // empty' 2>/dev/null)" || true
+  haiku_reason="$(echo "$response" | jq -r '.structured_output.reason // empty' 2>/dev/null)" || true
 
   # Validate decision is one of allow/deny/ask
   case "$haiku_decision" in
