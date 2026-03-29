@@ -1,9 +1,27 @@
 #!/bin/bash
 set -euo pipefail
 
+# --- Verbose tracing (set CLAUDE_HOOK_VERBOSE=1 to enable) ---
+VERBOSE="${CLAUDE_HOOK_VERBOSE:-0}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG_DIR="$(dirname "$SCRIPT_DIR")/logs"
+mkdir -p "$LOG_DIR"
+VERBOSE_LOG="$LOG_DIR/hook-trace.log"
+
+vtrace() {
+  if [ "$VERBOSE" = "1" ]; then
+    echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] $*" >> "$VERBOSE_LOG"
+  fi
+}
+
+vtrace "--- Hook invoked ---"
+
 # --- Read stdin JSON once ---
 INPUT="$(cat)"
+vtrace "Raw input: $INPUT"
+
 TOOL_NAME="$(echo "$INPUT" | jq -r '.tool_name // empty')"
+vtrace "Tool name: $TOOL_NAME"
 
 # Extract detail: command for Bash, file_path for file tools, tool_name as fallback
 case "$TOOL_NAME" in
@@ -17,11 +35,9 @@ case "$TOOL_NAME" in
     DETAIL="$TOOL_NAME"
     ;;
 esac
+vtrace "Detail: $DETAIL"
 
 # --- Logging setup ---
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_DIR="$(dirname "$SCRIPT_DIR")/logs"
-mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/permissions.jsonl"
 
 # --- Helper: log decision and output hook JSON ---
@@ -42,7 +58,8 @@ log_and_respond() {
     >> "$LOG_FILE"
 
   # Output hook response
-  jq -n \
+  local output
+  output="$(jq -n \
     --arg decision "$decision" \
     --arg reason "$reason" \
     '{
@@ -52,14 +69,11 @@ log_and_respond() {
           behavior: $decision
         }
       }
-    }'
+    }')"
 
-  # Exit code: 0 for allow, 2 for deny/ask
-  if [ "$decision" = "allow" ]; then
-    exit 0
-  else
-    exit 0
-  fi
+  vtrace "Hook JSON output: $output"
+  echo "$output"
+  exit 0
 }
 
 # --- Bash Tier 1: Regex Allowlist ---
@@ -163,16 +177,19 @@ Rules:
 case "$TOOL_NAME" in
   Bash)
     if check_allowlist "$DETAIL"; then
+      vtrace "Decision: ALLOW via allowlist"
       log_and_respond "allow" "allowlist"
     else
-      # Tier 2: Ask Haiku
+      vtrace "Not on allowlist, invoking Haiku tier-2 check..."
       haiku_result="$(check_with_haiku "$DETAIL")"
       haiku_decision="${haiku_result%%|*}"
       haiku_reason="${haiku_result#*|}"
+      vtrace "Haiku result: decision=$haiku_decision reason=$haiku_reason"
       log_and_respond "$haiku_decision" "$haiku_reason"
     fi
     ;;
   *)
+    vtrace "Decision: ALLOW (non-bash auto-allow)"
     log_and_respond "allow" "non-bash auto-allow"
     ;;
 esac
