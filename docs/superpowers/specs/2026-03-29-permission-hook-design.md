@@ -12,20 +12,23 @@ requests, auto-allow non-Bash tools, and gate Bash commands through an allowlist
 windows-dotfiles/
   .claude/
     hooks/
-      log-permission.sh      # Logs all permission requests
-      bash-gatekeeper.sh     # Multi-tier Bash command gating
-    logs/                    # Runtime logs (gitignored)
-    settings.json            # Hook configuration
-  .gitignore                 # Ignores .claude/logs/
+      log-permission.sh          # Logs all permission requests (async)
+      permission-gatekeeper.sh   # Single entry point — routes by tool name
+    logs/                        # Runtime logs (gitignored)
+    settings.json                # Hook configuration
+  .gitignore                     # Ignores .claude/logs/
 ```
 
 ## Hook Configuration (settings.json)
 
-Three `PermissionRequest` entries:
+Two `PermissionRequest` entries:
 
 1. **Logger** — matcher: `""` (all tools). Runs `log-permission.sh`. Async, never blocks.
-2. **Non-Bash auto-allow** — matcher: `^(?!Bash$)` (everything except Bash). Returns `allow`.
-3. **Bash gatekeeper** — matcher: `Bash`. Runs `bash-gatekeeper.sh`. Synchronous, can block.
+2. **Gatekeeper** — matcher: `""` (all tools). Runs `permission-gatekeeper.sh`. Synchronous.
+
+All routing logic lives inside `permission-gatekeeper.sh` via a `case` block on
+the tool name. This avoids matcher regex limitations and keeps decision logic in
+one place.
 
 ## log-permission.sh
 
@@ -38,9 +41,18 @@ Three `PermissionRequest` entries:
 - Always exits 0 (never blocks).
 - Creates the logs directory if missing.
 
-## bash-gatekeeper.sh
+## permission-gatekeeper.sh
 
-### Tier 1: Regex Allowlist
+Reads JSON from stdin, extracts `tool_name`, then dispatches:
+
+```bash
+case "$tool_name" in
+  Bash) # Multi-tier Bash gating (see below) ;;
+  *)    # Auto-allow all other tools ;;
+esac
+```
+
+### Bash: Tier 1 — Regex Allowlist
 
 Hardcoded patterns in the script. If the command matches any pattern, return
 `allow` immediately.
@@ -66,7 +78,7 @@ Hardcoded patterns in the script. If the command matches any pattern, return
 **Directory creation:**
 - `mkdir`
 
-### Tier 2: Haiku LLM Safety Check
+### Bash: Tier 2 — Haiku LLM Safety Check
 
 If no regex matched, call the Anthropic Messages API with `claude-haiku-4-5-20251001`:
 
@@ -101,7 +113,7 @@ Response format:
 - Extract `decision` and `reason` from Haiku's response.
 - Map to hook output: `permissionDecision` = decision, `permissionDecisionReason` = reason.
 
-### Tier 3: Fallback
+### Bash: Tier 3 — Fallback
 
 If the API call fails (network error, missing API key, timeout, malformed response):
 - Default to `ask` (let user decide).
