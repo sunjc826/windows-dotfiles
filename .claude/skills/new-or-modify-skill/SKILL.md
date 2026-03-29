@@ -1,9 +1,9 @@
 ---
-name: new-skill
-description: Reference for creating new Claude Code skills
+name: new-or-modify-skill
+description: Reference for creating, renaming, moving, or modifying Claude Code skills
 ---
 
-# Creating Claude Code Skills
+# Creating and Modifying Claude Code Skills
 
 ## Directory Structure
 
@@ -35,7 +35,11 @@ into `~/.claude/skills/` by the installer. When creating a new user-level skill:
 
 1. Create the skill directory in the dotfiles repo:
    `C:\Users\sunjc\Documents\Projects\windows-dotfiles\.claude\skills\<skill-name>\SKILL.md`
-2. Symlink it into the active location:
+2. Register the skill in `install.ps1` by adding an entry to the `$actions` array:
+   ```powershell
+   @{ Type = 'link'; Src = '.claude\skills\<skill-name>'; Dest = '.claude\skills\<skill-name>' }
+   ```
+3. Run the installer (or manually symlink for immediate use):
    ```bash
    ln -sfn /c/Users/sunjc/Documents/Projects/windows-dotfiles/.claude/skills/<skill-name> \
            /c/Users/sunjc/.claude/skills/<skill-name>
@@ -43,6 +47,24 @@ into `~/.claude/skills/` by the installer. When creating a new user-level skill:
 
 **Never** create user-level skills directly in `~/.claude/skills/` — they won't
 be tracked by git or deployed to other machines.
+
+## Renaming or Moving Skills
+
+When renaming a user-level skill, update **all three** locations:
+
+1. **Directory name** — rename the folder under
+   `windows-dotfiles/.claude/skills/`
+2. **Frontmatter `name`** — update in `SKILL.md`
+3. **`install.ps1`** — update the `Src`/`Dest` in the `$actions` array to match
+   the new name, and remove the old entry
+
+Then remove the old symlink and create the new one (or re-run the installer):
+
+```bash
+rm -rf ~/.claude/skills/<old-name>
+ln -sfn /c/Users/sunjc/Documents/Projects/windows-dotfiles/.claude/skills/<new-name> \
+        /c/Users/sunjc/.claude/skills/<new-name>
+```
 
 ## SKILL.md Format
 
