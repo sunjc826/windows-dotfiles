@@ -300,10 +300,13 @@ if (Get-PSDrive | Where-Object Name -eq 'D') {
 
 # declare what should happen; this mirrors the Linux style of having a list
 $actions = @(
-    @{ Type = 'link'; Src = '.claude\settings.json'; Dest = '.claude\settings.json' }
-    @{ Type = 'link'; Src = '.claude\CLAUDE.md'; Dest = '.claude\CLAUDE.md'; Optional = $true }
-    @{ Type = 'link'; Src = '.claude\skills\powershell'; Dest = '.claude\skills\powershell' }
-    @{ Type = 'link'; Src = '.claude\skills\new-skill'; Dest = '.claude\skills\new-skill' }
+    @{ Type = 'link'; Src = '.claude\settings.json' }
+    @{ Type = 'link'; Src = '.claude\CLAUDE.md'; Optional = $true }
+    @{ Type = 'link'; Src = '.claude\skills\powershell' }
+    @{ Type = 'link'; Src = '.claude\skills\new-or-modify-skill' }
+    @{ Type = 'link'; Src = '.claude\skills\commit-and-push' }
+    @{ Type = 'link'; Src = '.claude\skills\vscode-extension' }
+    @{ Type = 'link'; Src = '.claude\skills\new-hook' }
     @{ Type = 'link'; Src = 'Microsoft.PowerShell_profile.ps1'; Dest = $profile; IsAbsolute = $true }
     @{ Type = 'mkdir'; Path = "${dataDrive}:\llm"; isAbsolute = $true }
     @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\llm"; IsAbsolute = $true; IsOverride = $true }
@@ -322,12 +325,13 @@ foreach ($a in $actions) {
     try {
         $abs = $a.ContainsKey('IsAbsolute') -and $a.IsAbsolute
         $override = $a.ContainsKey('IsOverride') -and $a.IsOverride
+        $dest = if ($a.ContainsKey('Dest')) { $a.Dest } else { $a.Src }
         $result = switch ($a.Type) {
-            'link'  { New-DotfilesLinkItem $a.Src $a.Dest $abs }
-            'copy'  { Copy-DotfilesItem $a.Src $a.Dest $abs }
+            'link'  { New-DotfilesLinkItem $a.Src $dest $abs }
+            'copy'  { Copy-DotfilesItem $a.Src $dest $abs }
             'append' {
                 $kw = if ($a.ContainsKey('Keyword')) { $a.Keyword } else { 'source' }
-                Add-DotfilesSourceItem $a.Src $a.Dest -isAbsolute $abs -keyword $kw
+                Add-DotfilesSourceItem $a.Src $dest -isAbsolute $abs -keyword $kw
             }
             'userPath' {
                 Add-DotfilesUserPathItem $a.Path $abs
@@ -347,7 +351,7 @@ foreach ($a in $actions) {
         'mkdir'    { $src = $null;    $dest = $a.Path }
         'userPath' { $src = $a.Path;  $dest = 'HKCU:\Environment[Path]' }
         'userEnv'  { $src = $a.Value; $dest = "HKCU:\Environment[$($a.Name)]" }
-        default    { $src = $a.Src;   $dest = $a.Dest }
+        default    { $src = $a.Src;   $dest = if ($a.ContainsKey('Dest')) { $a.Dest } else { $a.Src } }
     }
     $result = [pscustomobject]@{
         PSTypeName    = 'Dotfiles.InstallResult'
