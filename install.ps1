@@ -292,6 +292,18 @@ Whether to override an existing value.
     return [DotfilesStatus]::Installed
 }
 
+# --- Prerequisites: ensure required tools are installed ---
+$prerequisites = @(
+    @{ Command = 'jq'; WingetId = 'jqlang.jq'; Description = 'jq (JSON processor)' }
+)
+
+foreach ($prereq in $prerequisites) {
+    if (-not (Get-Command $prereq.Command -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing $($prereq.Description) via winget..."
+        winget install --id $prereq.WingetId --accept-source-agreements --accept-package-agreements
+    }
+}
+
 $coreDrive = 'C'
 $dataDrive = 'C'
 if (Get-PSDrive | Where-Object Name -eq 'D') {
@@ -307,6 +319,7 @@ $actions = @(
     @{ Type = 'link'; Src = '.claude\skills\commit-and-push' }
     @{ Type = 'link'; Src = '.claude\skills\vscode-extension' }
     @{ Type = 'link'; Src = '.claude\skills\new-hook' }
+    @{ Type = 'link'; Src = '.claude\hooks' }
     @{ Type = 'link'; Src = 'Microsoft.PowerShell_profile.ps1'; Dest = $profile; IsAbsolute = $true }
     @{ Type = 'mkdir'; Path = "${dataDrive}:\llm"; isAbsolute = $true }
     @{ Type = 'userEnv'; Name = 'OLLAMA_MODELS'; Value = "${dataDrive}:\llm"; IsAbsolute = $true; IsOverride = $true }
