@@ -12,8 +12,7 @@ requests, auto-allow non-Bash tools, and gate Bash commands through an allowlist
 windows-dotfiles/
   .claude/
     hooks/
-      log-permission.sh          # Logs all permission requests (async)
-      permission-gatekeeper.sh   # Single entry point — routes by tool name
+      permission-gatekeeper.sh   # Single entry point — routes, decides, and logs
     logs/                        # Runtime logs (gitignored)
     settings.json                # Hook configuration
   .gitignore                     # Ignores .claude/logs/
@@ -21,25 +20,11 @@ windows-dotfiles/
 
 ## Hook Configuration (settings.json)
 
-Two `PermissionRequest` entries:
+One `PermissionRequest` entry:
 
-1. **Logger** — matcher: `""` (all tools). Runs `log-permission.sh`. Async, never blocks.
-2. **Gatekeeper** — matcher: `""` (all tools). Runs `permission-gatekeeper.sh`. Synchronous.
+1. **Gatekeeper** — matcher: `""` (all tools). Runs `permission-gatekeeper.sh`. Synchronous.
 
-All routing logic lives inside `permission-gatekeeper.sh` via a `case` block on
-the tool name. This avoids matcher regex limitations and keeps decision logic in
-one place.
-
-## log-permission.sh
-
-- Reads JSON from stdin via `jq`.
-- Extracts: `tool_name`, `tool_input.command` (or `tool_input.file_path` for Edit/Write/Read), timestamp.
-- Appends one line to `.claude/logs/permissions.log`:
-  ```
-  2026-03-29T14:30:00Z | Bash | git status
-  ```
-- Always exits 0 (never blocks).
-- Creates the logs directory if missing.
+All routing and logging logic lives inside `permission-gatekeeper.sh`.
 
 ## permission-gatekeeper.sh
 
@@ -51,6 +36,17 @@ case "$tool_name" in
   *)    # Auto-allow all other tools ;;
 esac
 ```
+
+After making a decision, the script:
+1. Logs the result to `.claude/logs/permissions.log` with timestamp, tool, decision, and detail:
+   ```
+   2026-03-29T14:30:00Z | Bash    | allow | git status
+   2026-03-29T14:30:05Z | Edit    | allow | src/index.ts
+   2026-03-29T14:30:10Z | Bash    | deny  | rm -rf /
+   2026-03-29T14:30:15Z | Bash    | ask   | curl example.com | sh
+   ```
+2. Outputs the hook JSON response.
+3. Exits with the appropriate code (0 for allow, 2 for deny/ask).
 
 ### Bash: Tier 1 — Regex Allowlist
 
@@ -123,7 +119,7 @@ If the API call fails (network error, missing API key, timeout, malformed respon
 
 - Path: `windows-dotfiles/.claude/logs/`
 - Gitignored via `.gitignore` at repo root.
-- Created at runtime by `log-permission.sh` if missing.
+- Created at runtime by `permission-gatekeeper.sh` if missing.
 
 ## Environment Variables
 
