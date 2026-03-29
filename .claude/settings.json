@@ -1,4 +1,31 @@
 {
   "model": "opus",
-  "autoUpdatesChannel": "latest"
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "autoUpdatesChannel": "latest",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.claude/hooks/permission-gatekeeper.sh\"",
+            "timeout": 15,
+            "statusMessage": "Checking permission..."
+          }
+        ]
+      }
+    ]
+  }
 }
