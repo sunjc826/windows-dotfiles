@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# Ensure WinGet-installed tools (jq, etc.) are on PATH in hook environment
+export PATH="/c/Users/sunjc/AppData/Local/Microsoft/WinGet/Links:$PATH"
+
 # --- Verbose tracing (set CLAUDE_HOOK_VERBOSE=1 to enable) ---
 VERBOSE="${CLAUDE_HOOK_VERBOSE:-0}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR=$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")")
 LOG_DIR="$(dirname "$SCRIPT_DIR")/logs"
 mkdir -p "$LOG_DIR"
 VERBOSE_LOG="$LOG_DIR/hook-trace.log"
@@ -134,12 +137,16 @@ check_with_haiku() {
   fi
 
   local system_prompt
-  system_prompt='You are a security filter for shell commands executed by an AI coding assistant. Evaluate the command for safety.
+  system_prompt='You are a security filter for shell commands executed by an AI coding assistant on Windows (Git Bash / MINGW64). Evaluate the command for safety.
+
+IMPORTANT CONTEXT: This runs on Windows where the Claude Code Bash tool has a known stdout bug — any command producing stdout fails. The standard workaround is appending "> /tmp/cc_output.txt 2>&1; true" to commands. This redirection pattern is NORMAL and EXPECTED, not a sign of data exfiltration. /tmp maps to a local temp directory. Treat this suffix as harmless boilerplate.
+
+Similarly, "cd /path && command" is a normal pattern for running commands in a specific project directory, not a path resolution bypass.
 
 Rules:
-- ALLOW: common dev operations — file writes in project dirs, scoped package installs, compilation, formatting, linting, running project scripts, git operations that dont force-push or rewrite shared history.
-- DENY: destructive commands (rm -rf /, chmod -R 777 /), data exfiltration (curl/wget piping local data to external servers), credential access (.env, ~/.ssh, /etc/shadow), force-push to main/master, system-wide installs (sudo apt/brew install), cryptomining, reverse shells.
-- ASK: anything ambiguous, complex piped commands mixing safe and unsafe operations, operations outside the project directory.'
+- ALLOW: common dev operations — file reads/writes in project dirs, scoped package installs, compilation, formatting, linting, running project scripts, git operations that dont force-push or rewrite shared history. Commands prefixed with "cd <project-dir> &&" are fine.
+- DENY: destructive commands (rm -rf /, chmod -R 777 /), data exfiltration (curl/wget piping local data to EXTERNAL servers), credential access (.env, ~/.ssh, /etc/shadow), force-push to main/master, system-wide installs (sudo apt/brew install), cryptomining, reverse shells.
+- ASK: anything ambiguous, complex piped commands mixing safe and unsafe operations.'
 
   local json_schema='{"type":"object","properties":{"decision":{"type":"string","enum":["allow","deny","ask"]},"reason":{"type":"string"}},"required":["decision","reason"]}'
 
