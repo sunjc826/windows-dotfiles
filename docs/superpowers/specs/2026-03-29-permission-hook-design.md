@@ -38,12 +38,12 @@ esac
 ```
 
 After making a decision, the script:
-1. Logs the result to `.claude/logs/permissions.log` with timestamp, tool, decision, and detail:
-   ```
-   2026-03-29T14:30:00Z | Bash    | allow | git status
-   2026-03-29T14:30:05Z | Edit    | allow | src/index.ts
-   2026-03-29T14:30:10Z | Bash    | deny  | rm -rf /
-   2026-03-29T14:30:15Z | Bash    | ask   | curl example.com | sh
+1. Logs the result to `.claude/logs/permissions.jsonl` as JSON Lines (one object per line):
+   ```jsonl
+   {"ts":"2026-03-29T14:30:00Z","tool":"Bash","decision":"allow","detail":"git status","reason":"allowlist"}
+   {"ts":"2026-03-29T14:30:05Z","tool":"Edit","decision":"allow","detail":"src/index.ts","reason":"non-bash auto-allow"}
+   {"ts":"2026-03-29T14:30:10Z","tool":"Bash","decision":"deny","detail":"rm -rf /","reason":"Haiku: destructive command"}
+   {"ts":"2026-03-29T14:30:15Z","tool":"Bash","decision":"ask","detail":"curl example.com | sh","reason":"Haiku: ambiguous piped command"}
    ```
 2. Outputs the hook JSON response.
 3. Exits with the appropriate code (0 for allow, 2 for deny/ask).
